@@ -11,6 +11,8 @@
 
 The latest supplied frontal photograph supersedes the museum photo as the main model reference: shorter broad torso, large smooth pelvis, thick telescoping arms, six registers in one row, an arched hood, and broad flat-soled boots. Vehicle motion is substantially faster than the first version.
 
+The supplied close three-quarter photograph of the empty vehicle establishes its rounded front and rear wheel shrouds, joined by a low continuous side skirt. These opaque metal panels conceal most of the tires; the vehicle should not read as an exposed-wheel cart.
+
 ## Supplied videos
 
 The primary agent inspected the user's [Robothut vehicle discussion](https://www.youtube.com/watch?v=i6tdWV1sY7I) and [original-film arrival excerpt](https://www.youtube.com/watch?v=6fw7PcJcufM) through the browser after text fetching failed. The user also provided [the Jean Cocteau Cinema short](https://www.youtube.com/shorts/WhrRIER2L4g), used as a supplementary mechanism reference. Selected visible frames, not a frame-by-frame motion capture, informed the work:
@@ -19,7 +21,9 @@ The primary agent inspected the user's [Robothut vehicle discussion](https://www
 - Around 1:30: front grille open with Robby outside the vehicle.
 - Around 1:42: close view of the head mechanisms and horizontal neon area beneath the dome.
 
-The front opens, Robby enters standing, and the enclosure closes around him in the demo. The vehicle follows a circular route represented as a ground-plane ellipse in an expanded driving area. Choosing Walk stops the vehicle at its current position, opens the grille, and brings Robby out through the front; the open vehicle stays parked behind him. The path, timing, turning, and driving loop are original animation choreography, not a claim of exact film reproduction. The vehicle retains its illustrated viewing orientation around the route; this is a 2.5D motion study rather than a fully steerable 3D vehicle.
+The later supplied [Robby Clip.mp4 excerpt](https://www.youtube.com/watch?v=SKdTYaAY1V8) was also inspected in the browser. The approach view around 0:29 shows the low skirt concealing the wheels; the close view around 0:49 corroborates the broad front wheel shroud and continuous side skirt in the supplied empty-vehicle photograph.
+
+The front opens, Robby enters standing, and the enclosure closes around him in the demo. The vehicle follows a broad perimeter route with smooth bends across the test ground. Movement advances by ground distance with gentle acceleration; the chassis follows the route tangent, the front wheels steer into bends, and the tires roll with distance. The car is drawn from projected three-dimensional surfaces, so its front, sides, and rear change naturally with its heading. Choosing Walk stops it at its current position and heading, opens the grille, and brings Robby out through the local front opening, including when the vehicle faces away from the viewer. The route and choreography are animation interpretations, not measured film reconstruction or a full tire-and-suspension simulation.
 
 ## Audio provenance
 

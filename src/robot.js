@@ -2,14 +2,16 @@
 // Crown = 0; soles = 480. Orthographic depth keeps orbiting independent of WebGL.
 const PI = Math.PI, clamp = (n,a,b) => Math.max(a,Math.min(b,n)), f = n => Number(n.toFixed(2));
 export class RobbyRenderer {
-  constructor(svg) { this.svg=svg; this.yaw=-.22; this.zoom=1; this.offset=0; svg.setAttribute('viewBox','-300 -24 600 554'); }
+  constructor(svg) { this.svg=svg; this.yaw=-.22; this.zoom=1; this.offset=0; this.groundPitch=null; svg.setAttribute('viewBox','-300 -24 600 554'); }
   render(s) {
     const t=s.time||0, phase=s.phase||0, motion=s.reducedMotion?0:1, walk=(s.walkWeight||0)*motion;
     const c=Math.cos(this.yaw), sn=Math.sin(this.yaw), sway=Math.sin(phase)*2*walk, bob=-Math.abs(Math.sin(phase))*1.6*walk;
     // A signal alone must never make an idle robot glow.
     const speech=s.speaking?clamp(s.speechLevel||0,0,1):0, registers=clamp(s.registerLevel||0,0,1);
     const mechanism=motion*Math.max(registers,speech*.7,s.activeMode==='lights'?.65:0);
-    const p=(x,y,z=0)=>[f(x*c+z*sn+sway),f(y-z*.065+bob)], pt=(x,y,z=0)=>p(x,y,z).join(',');
+    // Match the car's lateral ground depth as Robby turns, while preserving
+    // the portrait artwork's shallow relief on its front-mounted details.
+    const p=(x,y,z=0)=>[f(x*c+z*sn+sway),f(y-z*.065-(this.groundPitch===null?0:x*sn*this.groundPitch)+bob)], pt=(x,y,z=0)=>p(x,y,z).join(',');
     const radius=(x,z=x)=>Math.sqrt((x*c)**2+(z*sn)**2);
     const ell=(x,y,z,rx,ry,fill='url(#rb-black)',rz=rx,stroke='#465056',sw=.65)=>{const [cx,cy]=p(x,y,z);return `<ellipse cx="${cx}" cy="${cy}" rx="${f(radius(rx,rz))}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;};
     const line=(a,b,color,width=1,extra='')=>`<path d="M${p(...a)} L${p(...b)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" ${extra}/>`;
