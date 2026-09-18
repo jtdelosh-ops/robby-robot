@@ -773,6 +773,8 @@ function renderVehicle({gate=0,wheel=0,heading=0,steering=0,pitch=.5,robotDepth=
   const defs=`
   <linearGradient id="rv-silver" x1="0" y1="0" x2=".2" y2="1"><stop stop-color="#d8e1df"/><stop offset=".25" stop-color="#94a5aa"/><stop offset=".64" stop-color="#6b818c"/><stop offset="1" stop-color="#3c5665"/></linearGradient>
   <linearGradient id="rv-deck" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c9d5d3"/><stop offset=".45" stop-color="#83989f"/><stop offset="1" stop-color="#465f6c"/></linearGradient>
+  <linearGradient id="rv-shroud" gradientUnits="userSpaceOnUse" x1="-180" y1="285" x2="160" y2="560"><stop stop-color="#a3b2b5"/><stop offset=".28" stop-color="#7c919a"/><stop offset=".68" stop-color="#5a7482"/><stop offset="1" stop-color="#3b5868"/></linearGradient>
+  <linearGradient id="rv-shroud-top" gradientUnits="userSpaceOnUse" x1="-180" y1="260" x2="170" y2="540"><stop stop-color="#c2ceca"/><stop offset=".48" stop-color="#97a9ad"/><stop offset="1" stop-color="#6b838e"/></linearGradient>
   <linearGradient id="rv-rib" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f0f5e9"/><stop offset=".35" stop-color="#c5d4d3"/><stop offset=".75" stop-color="#80979f"/><stop offset="1" stop-color="#c5d5d6"/></linearGradient>
   <linearGradient id="rv-glass" x1="0" y1="0" x2="1" y2=".4"><stop stop-color="#e7ffff" stop-opacity=".36"/><stop offset=".22" stop-color="#c9edf4" stop-opacity=".07"/><stop offset=".7" stop-color="#efffff" stop-opacity=".025"/><stop offset="1" stop-color="#d7f6fa" stop-opacity=".24"/></linearGradient>
   <radialGradient id="rv-tire"><stop stop-color="#65777e"/><stop offset=".43" stop-color="#293e48"/><stop offset=".67" stop-color="#13252e"/><stop offset="1" stop-color="#061219"/></radialGradient>`;
@@ -820,40 +822,69 @@ function renderVehicle({gate=0,wheel=0,heading=0,steering=0,pitch=.5,robotDepth=
     }
     flush();
   };
-  const box=(x1,x2,y1,y2,z1,z2,fill='url(#rv-silver)',attrs='')=>{
+  const box=(x1,x2,y1,y2,z1,z2,fill='url(#rv-silver)',attrs='',enclosedSides=false)=>{
     const a=[x1,y1,z1],b=[x2,y1,z1],c=[x2,y1,z2],d=[x1,y1,z2],e=[x1,y2,z1],g=[x2,y2,z1],j=[x2,y2,z2],k=[x1,y2,z2];
-    for(const face of [[e,g,j,k],[a,e,g,b],[b,g,j,c],[c,j,k,d],[d,k,e,a]])polygon(face,fill,'#617d89',.8,attrs);
+    const faces=[[e,g,j,k],[a,e,g,b],[b,g,j,c],[c,j,k,d],[d,k,e,a]];
+    for(let i=0;i<faces.length;i++){if(enclosedSides&&(i===2||i===4))continue;polygon(faces[i],fill,'#617d89',.8,attrs);}
     polygon([a,b,c,d],'url(#rv-deck)','#c1cfcc',1,attrs);
   };
   const circlePoints=(center,ax,ay,r,n=24)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return center.map((v,j)=>v+r*(Math.cos(a)*ax[j]+Math.sin(a)*ay[j]));});
-  // Four volumetric tires: axle direction follows the steering rack on the front pair.
+  // The opaque wheel covers hide everything above their lower clearance edge.
+  // Clip that known hidden volume before projection: average-depth painter sorting
+  // cannot otherwise guarantee that a large tire face stays behind a curved cover.
+  const wheelClearance=474;
+  const uncoveredWheel=points=>{
+    const out=[];
+    for(let i=0;i<points.length;i++) {
+      const a=points[i],b=points[(i+1)%points.length],da=a[1]-wheelClearance,db=b[1]-wheelClearance;
+      if(da>=0)out.push(a);
+      if(da*db<0){const k=da/(da-db);out.push(a.map((v,j)=>v+(b[j]-v)*k));}
+    }
+    return out;
+  };
+  const tireFace=(points,...style)=>{const exposed=uncoveredWheel(points);if(exposed.length>=3)polygon(exposed,...style);};
+  // The small exposed tire slivers retain front-axle steering and moving tread.
   for(const z of [-210,37])for(const side of [-1,1]) {
     const turn=z>0?steer:0,cs=Math.cos(turn),ss=Math.sin(turn),center=[side*91,457,z],ax=[cs,0,-ss],radial=[ss,0,cs],vertical=[0,1,0];
     const outer=center.map((v,j)=>v+ax[j]*side*8),inner=center.map((v,j)=>v-ax[j]*side*7);
     const op=circlePoints(outer,radial,vertical,23),ip=circlePoints(inner,radial,vertical,23);
-    for(let j=0;j<24;j++)polygon([ip[j],op[j],op[(j+1)%24],ip[(j+1)%24]],'#15262f','#263c46',.4,'class="vehicle-wheel-tread"');
-    polygon(ip,'#152832','#0a1720',1,'class="vehicle-wheel"');
-    polygon(op,'url(#rv-tire)','#061017',1.5,`class="vehicle-wheel" data-axle="${z>0?'front':'rear'}" data-steering="${f(turn)}"`);
-    polygon(circlePoints(outer,radial,vertical,12),'#536b77','#839ba2',.8,'class="vehicle-wheel-hub"');
-    for(let j=0;j<5;j++) {
-      const a=spin+j*2*Math.PI/5,end=outer.map((v,k)=>v+10*(Math.cos(a)*radial[k]+Math.sin(a)*vertical[k]));
-      segment(outer,end,'#c0d1d0',1.1,`class="vehicle-wheel-spoke" data-wheel="${f(spin)}"`);
+    for(let j=0;j<24;j++)tireFace([ip[j],op[j],op[(j+1)%24],ip[(j+1)%24]],'#15262f','#263c46',.4,'class="vehicle-wheel-tread"');
+    tireFace(ip,'#152832','#0a1720',1,'class="vehicle-wheel"');
+    tireFace(op,'url(#rv-tire)','#061017',1.1,`class="vehicle-wheel" data-axle="${z>0?'front':'rear'}" data-steering="${f(turn)}"`);
+    for(let j=0;j<18;j++) {
+      const a=spin+j*2*Math.PI/18,dy=23*Math.sin(a);
+      if(center[1]+dy<wheelClearance)continue;
+      const contact=radial.map((v,k)=>23*Math.cos(a)*v+dy*vertical[k]);
+      segment(inner.map((v,k)=>v+contact[k]),outer.map((v,k)=>v+contact[k]),'#526570',.7,`class="vehicle-wheel-tread-detail" data-wheel="${f(spin)}"`);
     }
-    polygon(circlePoints(outer,radial,vertical,3,12),'#c6d5d0','#5b737f',.5);
   }
   // Rear passenger deck is raised; the front driver's footwell is at Robby's soles.
-  box(-87,87,430,459,-252,-82,'url(#rv-silver)','class="vehicle-chassis"');
+  // Its old exterior side walls now sit inside the opaque shroud volume. Omit
+  // those buried faces so their long average depth cannot repaint a wheel cover.
+  box(-87,87,430,459,-252,-82,'url(#rv-silver)','class="vehicle-chassis"',true);
   box(-87,87,448,477,-82,-53,'url(#rv-silver)','class="vehicle-chassis vehicle-step"');
   const floor=[[-88,476,-65],[88,476,-65],...Array.from({length:19},(_,i)=>{const a=-Math.PI/2+i*Math.PI/18;return [90*Math.sin(a),476,90*Math.cos(a)];}).reverse()];
   polygon(floor,'url(#rv-deck)','#c6d3d0',1.4,'class="vehicle-footwell"');
   lineStrip(floor.concat([floor[0]]),'#526f7c',3,'class="vehicle-footwell-rim"');
-  // Low sculpted side panels keep the long body legible in profile and from the rear.
+  // Rounded front and rear wheel shrouds are joined by a low continuous skirt.
+  // Narrow sections and bevel faces preserve their volume at every car heading.
+  const shroudProfile=[[-263,441],[-259,422],[-251,409],[-239,398],[-225,393],[-211,394],[-198,401],[-186,415],[-177,436],[-163,439],[-124,439],[-86,439],[-73,434],[-66,415],[-55,402],[-41,397],[-23,396],[0,396],[26,397],[48,402],[64,412],[75,431],[79,442]];
   for(const side of [-1,1]) {
-    const x=side*89;
-    polygon([[x,431,-248],[x,404,-238],[x,403,-213],[x,419,-177],[x,424,-97],[x,451,-65],[x,465,-65],[x,456,-248]],'url(#rv-silver)','#8ba2aa',1.2,'class="vehicle-side"');
-    lineStrip([[x,432,-247],[x,411,-234],[x,411,-215],[x,427,-180],[x,432,-98],[x,455,-66]],'#d1ded9',2,'class="vehicle-side-trim"');
-    segment([x,450,-246],[x,456,-68],'#4d6c7c',1.2);
-    box(side<0?-102:80,side<0?-80:102,430,441,12,61,'url(#rv-silver)','class="vehicle-front-fender"');
+    const inside=side*70,shoulder=side*105,outside=side*115;
+    for(let i=1;i<shroudProfile.length;i++) {
+      const [za,ya]=shroudProfile[i-1],[zb,yb]=shroudProfile[i],attrs=`class="vehicle-wheel-shroud vehicle-side-skirt" data-side="${side}"`;
+      polygon([[inside,ya,za],[shoulder,ya,za],[shoulder,yb,zb],[inside,yb,zb]],'url(#rv-shroud-top)','url(#rv-shroud-top)',.35,attrs);
+      polygon([[shoulder,ya,za],[outside,ya+6,za],[outside,yb+6,zb],[shoulder,yb,zb]],'url(#rv-shroud-top)','url(#rv-shroud-top)',.35,attrs);
+      polygon([[outside,ya+6,za],[outside,474,za],[outside,474,zb],[outside,yb+6,zb]],'url(#rv-shroud)','url(#rv-shroud)',.35,attrs);
+      polygon([[inside,ya,za],[inside,yb,zb],[inside,474,zb],[inside,474,za]],'url(#rv-shroud)','url(#rv-shroud)',.35,attrs);
+      polygon([[outside,474,za],[shoulder,477,za],[shoulder,477,zb],[outside,474,zb]],'#354f5e','none',0,attrs);
+    }
+    for(const [z,y] of [shroudProfile[0],shroudProfile.at(-1)])polygon([[inside,y,z],[shoulder,y,z],[outside,y+6,z],[outside,474,z],[shoulder,477,z],[inside,474,z]],'url(#rv-shroud)','#8ca0a7',.6,'class="vehicle-shroud-end"');
+    lineStrip(shroudProfile.map(([z,y])=>[shoulder,y+.3,z]),'#c8d5d1',1.25,'class="vehicle-shroud-shoulder"');
+    lineStrip(shroudProfile.map(([z,y])=>[outside,y+7,z]),'#8ea4ad',.65,'class="vehicle-shroud-edge"');
+    // Separate short trim runs sort with their corresponding section, avoiding
+    // a single long bright stroke floating across either of the wheel covers.
+    for(let i=1;i<shroudProfile.length;i++)segment([outside,472,shroudProfile[i-1][0]],[outside,472,shroudProfile[i][0]],'#9fb4bc',.8,'class="vehicle-side-trim"');
   }
   box(-87,87,416,451,-255,-249,'url(#rv-silver)','class="vehicle-rear-panel"');
   segment([-83,418,-255],[83,418,-255],'#d8e4dd',2.2);

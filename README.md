@@ -24,6 +24,8 @@ The vehicle opens its front grille, Robby walks into the standing bay, turns int
 
 ## Scope and sources
 
+Rounded front and rear wheel shrouds join a low continuous side skirt, following the supplied vehicle photograph. Most of each tire is concealed, with a narrow tread edge visible below the bodywork.
+
 This is original procedural 2.5D SVG artwork, proportioned from the supplied photographs. It works without WebGL. Walking cadence, register sounds, and boarding choreography are approximations. The original-film voice is an 8.59-second excerpt, not synthesized speech. See `RESEARCH.md` for sources and limits.
 
 This separate demo does not replace B9 on an existing website. Its reusable component supports embedding, but does not include the B9 kit's autonomous page roaming or draggable remote.
