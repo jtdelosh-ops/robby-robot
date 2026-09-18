@@ -20,7 +20,7 @@ No dependency installation is required. GitHub Actions runs the tests, rebuilds 
 
 Use **Walk**, **Speak**, **Mechanisms**, or **Board & drive**. **Run sequence** runs the walking, registers, voice, and head mechanisms. Sound starts off; enable it explicitly to hear the film recording. Drag Robby or use the view slider to turn him. **Stop** cancels the performance; Escape also stops it when the robot viewer has focus.
 
-The vehicle opens its front grille, Robby walks into the standing bay, turns into the driving position, and the grille closes around him before driving. The driving view expands across the page, with space for a continuous circular route shown in perspective. Choose **Walk** or the stage's **Exit & walk** button to stop at the current position, open the front grille, and have Robby step out. He continues walking outside while the vehicle remains parked. Reduced motion shows a stationary pose instead. The view angle is automatic throughout the vehicle scene.
+The vehicle opens its front grille, Robby walks into the standing bay, turns into the driving position, and the grille closes around him before driving. It accelerates gently onto a broad route around the test ground, with steady travel speed and smooth bends. The body, driver, and front wheels turn with the route, and the wheels roll with distance traveled. Choose **Walk** or the stage's **Exit & walk** button to stop at the current position and heading, open the front grille, and have Robby step out. He continues walking outside while the vehicle remains parked. **Board & drive** resumes from the parked position. Reduced motion shows a stationary pose instead. The view angle is automatic throughout the vehicle scene.
 
 ## Scope and sources
 
@@ -57,6 +57,6 @@ node --test
 node serve.mjs
 ```
 
-Source lives in `src/`; the build emits `index.html`, `dist/robby-demo.html`, and `dist/robby-robot.js`. The two HTML files are identical standalone deliverables. `tests/viewport.html` is a local 390px layout-check harness.
+Source lives in `src/`; the build emits `index.html`, `dist/robby-demo.html`, and `dist/robby-robot.js`. The two HTML files are identical standalone deliverables. `tests/viewport.html` checks a 390px layout; `tests/driving.html` exposes driving state and frame timing for browser verification.
 
-An independent reviewer inspected the code, actual renders, reference photos, and builds. Boarding, late-unmute timing, component cleanup, and mechanism-motion findings were corrected and rechecked. The circular route and vehicle-exit transitions were also reviewed. All 23 tests pass; the final verdict is **Ready**. See `REVIEW.md` for details and verification limits.
+An independent reviewer inspected the code, actual renders, reference photos, and builds. Boarding, late-unmute timing, component cleanup, and mechanism-motion findings were corrected and rechecked. The turning vehicle, distance-based route, and exits are covered by the latest review. The suite includes 37 tests. See `REVIEW.md` for the verdict, evidence, and verification limits.

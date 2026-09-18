@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Robby driving verification</title>
+<style>body{margin:20px;background:#19313f;color:#e8eff2;font:14px system-ui}button{padding:10px;margin:0 8px 8px 0}robby-robot{display:block;width:min(1100px,100%);height:680px;background:#75949f}pre{white-space:pre-wrap}</style>
+<h1>Driving verification</h1><button id="drive">Drive</button><button id="exit">Exit &amp; walk</button><button id="stop">Stop</button><label><input id="reduced" type="checkbox"> Reduced motion</label><robby-robot></robby-robot><pre id="result"></pre>
+<script type="module">
+import '../src/widget.js';
+const robot=document.querySelector('robby-robot');let previous=0,frameMs=[],lastReport=0;
+document.querySelector('#drive').onclick=()=>{frameMs=[];robot.drive()};
+document.querySelector('#exit').onclick=()=>robot.walk();document.querySelector('#stop').onclick=()=>robot.stop();
+document.querySelector('#reduced').onchange=e=>robot.setMotion(!e.target.checked);
+function tick(now){if(previous&&robot.debugState().vehiclePhase==='driving'){frameMs.push(now-previous);if(frameMs.length>300)frameMs.shift()}previous=now;
+ if(now-lastReport>250){lastReport=now;const s=robot.debugState();const average=frameMs.length?frameMs.reduce((a,b)=>a+b,0)/frameMs.length:0;
+ document.querySelector('#result').textContent=JSON.stringify({phase:s.vehiclePhase,position:s.vehiclePosition,heading:s.vehicleHeading,steering:s.vehicleSteering,groundSpeed:s.vehicleSpeed,robot:s.robotPosition,gate:s.vehicleGate,wheel:s.vehicleWheel,reducedMotion:s.reducedMotion,frameSamples:frameMs.length,averageFrameMs:average,estimatedFps:average?1000/average:0},null,2)}requestAnimationFrame(tick)}requestAnimationFrame(tick);
+</script></html>

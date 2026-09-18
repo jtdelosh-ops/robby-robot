@@ -21,12 +21,12 @@ const update=()=>{const s=robot.debugState();const inVehicleScene=!!s.vehiclePha
  document.body.classList.toggle('vehicle-view',inVehicleScene);
  document.querySelector('#reset-view').hidden=inVehicleScene;
  document.querySelector('.stage-title h1').textContent=inVehicleScene?'A drive on Altair IV.':'Meet Robby.';
- document.querySelector('.stage-title p').textContent=inVehicleScene?'Room to roam. A circular route.':'A classic, set in motion.';
+ document.querySelector('.stage-title p').textContent=inVehicleScene?'Open ground. Smooth turns.':'A classic, set in motion.';
  status.textContent=inVehicleScene?'Vehicle · '+s.vehiclePhase:modeNames[s.mode]||'Standing by';
  caption.textContent=s.vehicleAction==='exit'?'The vehicle stops, the front grille opens, and Robby steps out.'
   :s.vehicleAction==='parked'&&s.vehicleOutside?'Robby is outside. The vehicle stays parked with its front grille open.'
   :s.vehicleAction==='parked'?'The vehicle is stopped. Choose Exit & walk to open the grille and step out.'
-  :inVehicleScene&&s.vehiclePhase==='driving'?'Robby drives a continuous loop. Choose Exit & walk to stop and step out.'
+  :inVehicleScene&&s.vehiclePhase==='driving'?'Robby tours the test ground. Choose Exit & walk to stop and step out.'
   :inVehicleScene?'Robby boards through the open front grille and stands in the driving position.'
   :s.caption||description[s.mode]||description.idle;
  document.querySelector('#sound').textContent=s.muted?'Sound off':'Sound on';document.querySelector('#sound').setAttribute('aria-pressed',String(!s.muted));

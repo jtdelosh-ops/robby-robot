@@ -19,7 +19,7 @@ The primary agent inspected the user's [Robothut vehicle discussion](https://www
 - Around 1:30: front grille open with Robby outside the vehicle.
 - Around 1:42: close view of the head mechanisms and horizontal neon area beneath the dome.
 
-The front opens, Robby enters standing, and the enclosure closes around him in the demo. The vehicle follows a circular route represented as a ground-plane ellipse in an expanded driving area. Choosing Walk stops the vehicle at its current position, opens the grille, and brings Robby out through the front; the open vehicle stays parked behind him. The path, timing, turning, and driving loop are original animation choreography, not a claim of exact film reproduction. The vehicle retains its illustrated viewing orientation around the route; this is a 2.5D motion study rather than a fully steerable 3D vehicle.
+The front opens, Robby enters standing, and the enclosure closes around him in the demo. The vehicle follows a broad perimeter route with smooth bends across the test ground. Movement advances by ground distance with gentle acceleration; the chassis follows the route tangent, the front wheels steer into bends, and the tires roll with distance. The car is drawn from projected three-dimensional surfaces, so its front, sides, and rear change naturally with its heading. Choosing Walk stops it at its current position and heading, opens the grille, and brings Robby out through the local front opening, including when the vehicle faces away from the viewer. The route and choreography are animation interpretations, not measured film reconstruction or a full tire-and-suspension simulation.
 
 ## Audio provenance
 

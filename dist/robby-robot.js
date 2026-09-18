@@ -503,14 +503,16 @@ const RobbyRenderer=(()=>{
 // Crown = 0; soles = 480. Orthographic depth keeps orbiting independent of WebGL.
 const PI = Math.PI, clamp = (n,a,b) => Math.max(a,Math.min(b,n)), f = n => Number(n.toFixed(2));
 class RobbyRenderer {
-  constructor(svg) { this.svg=svg; this.yaw=-.22; this.zoom=1; this.offset=0; svg.setAttribute('viewBox','-300 -24 600 554'); }
+  constructor(svg) { this.svg=svg; this.yaw=-.22; this.zoom=1; this.offset=0; this.groundPitch=null; svg.setAttribute('viewBox','-300 -24 600 554'); }
   render(s) {
     const t=s.time||0, phase=s.phase||0, motion=s.reducedMotion?0:1, walk=(s.walkWeight||0)*motion;
     const c=Math.cos(this.yaw), sn=Math.sin(this.yaw), sway=Math.sin(phase)*2*walk, bob=-Math.abs(Math.sin(phase))*1.6*walk;
     // A signal alone must never make an idle robot glow.
     const speech=s.speaking?clamp(s.speechLevel||0,0,1):0, registers=clamp(s.registerLevel||0,0,1);
     const mechanism=motion*Math.max(registers,speech*.7,s.activeMode==='lights'?.65:0);
-    const p=(x,y,z=0)=>[f(x*c+z*sn+sway),f(y-z*.065+bob)], pt=(x,y,z=0)=>p(x,y,z).join(',');
+    // Match the car's lateral ground depth as Robby turns, while preserving
+    // the portrait artwork's shallow relief on its front-mounted details.
+    const p=(x,y,z=0)=>[f(x*c+z*sn+sway),f(y-z*.065-(this.groundPitch===null?0:x*sn*this.groundPitch)+bob)], pt=(x,y,z=0)=>p(x,y,z).join(',');
     const radius=(x,z=x)=>Math.sqrt((x*c)**2+(z*sn)**2);
     const ell=(x,y,z,rx,ry,fill='url(#rb-black)',rz=rx,stroke='#465056',sw=.65)=>{const [cx,cy]=p(x,y,z);return `<ellipse cx="${cx}" cy="${cy}" rx="${f(radius(rx,rz))}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;};
     const line=(a,b,color,width=1,extra='')=>`<path d="M${p(...a)} L${p(...b)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" ${extra}/>`;
@@ -671,90 +673,232 @@ class RobbyRenderer {
 
 return RobbyRenderer;})();
 const renderVehicle=(()=>{
-/** Original SVG study, proportioned from the supplied landcar photographs.
- * https://silodrome.com/jeep-robby-robot-forbidden-planet/
- * Robby stands at x=0 inside the front cage; passenger chairs sit behind him.
- * Insert defs into <defs>, back before the robot and front after the robot.
- * gate: 0 closed / 1 front entry open. wheel: axle rotation in radians.
+/** Original projected SVG landcar study, drawn from the supplied reference photographs.
+ * Local x is lateral; +z is the openable front; Robby stands at (0, 480, 0).
+ * Insert back before Robby and front after him. No image mirroring or screen rotation.
  */
-const clamp = n => Math.max(0, Math.min(1, Number(n) || 0));
-const f = n => Number(n.toFixed(3));
-function renderVehicle({gate=0, wheel=0}={}) {
-  // Past edge-on, each leaf visibly swings outward beyond its own hinge.
-  const opened=clamp(gate), leaf=f(1-opened*1.38);
-  const angle=Number.isFinite(Number(wheel))?f(Number(wheel)*180/Math.PI%360):0;
+const finite=(n,fallback=0)=>Number.isFinite(Number(n))?Number(n):fallback;
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const f=n=>Math.round(n*1000)/1000;
+function projectVehiclePoint(x,y,z,heading=0,pitch=.5) {
+  const c=Math.cos(heading),s=Math.sin(heading),depth=-x*s+z*c;
+  return [x*c+z*s,y+depth*pitch,depth];
+}
+function renderVehicle({gate=0,wheel=0,heading=0,steering=0,pitch=.5,robotDepth=0}={}) {
+  const opened=clamp(finite(gate),0,1),h=finite(heading),tilt=clamp(finite(pitch,.5),0,.8);
+  const spin=finite(wheel),steer=clamp(finite(steering),-.7,.7),plane=finite(robotDepth),surfaces=[];
+  const hc=Math.cos(h),hs=Math.sin(h),depth=p=>-p[0]*hs+p[2]*hc;
+  const project=p=>{const d=depth(p);return [p[0]*hc+p[2]*hs,p[1]+d*tilt,d];};
+  const relativeDepth=p=>{const d=depth(p)-plane;return Math.abs(d)<1e-7?0:d;};
+  const coords=p=>`${f(p[0]*hc+p[2]*hs)},${f(p[1]+depth(p)*tilt)}`;
   const defs=`
-  <linearGradient id="rv-silver" x1="0" y1="0" x2=".15" y2="1"><stop stop-color="#dce3e0"/><stop offset=".14" stop-color="#89999e"/><stop offset=".57" stop-color="#606f77"/><stop offset=".86" stop-color="#7f9096"/><stop offset="1" stop-color="#334b58"/></linearGradient>
-  <linearGradient id="rv-deck" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c6d1d0"/><stop offset=".4" stop-color="#829197"/><stop offset="1" stop-color="#354b58"/></linearGradient>
-  <linearGradient id="rv-rib" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f1f7ed"/><stop offset=".26" stop-color="#c7d5d5"/><stop offset=".50" stop-color="#94a5a9"/><stop offset=".72" stop-color="#536a75"/><stop offset="1" stop-color="#b8cacc"/></linearGradient>
-  <linearGradient id="rv-glass" x1="0" y1="0" x2="1" y2=".6"><stop stop-color="#e7ffff" stop-opacity=".37"/><stop offset=".22" stop-color="#cdf4fa" stop-opacity=".08"/><stop offset=".65" stop-color="#efffff" stop-opacity=".025"/><stop offset="1" stop-color="#cdf0f3" stop-opacity=".3"/></linearGradient>
-  <radialGradient id="rv-tire"><stop stop-color="#6e7e82"/><stop offset=".4" stop-color="#253640"/><stop offset=".62" stop-color="#111e25"/><stop offset="1" stop-color="#030c12"/></radialGradient>`;
-  const wheelMarkup=(x,y,r)=>`<g class="vehicle-wheel" transform="translate(${x} ${y}) scale(.8 1)"><circle r="${r}" fill="url(#rv-tire)" stroke="#061017" stroke-width="2"/><circle r="${r*.53}" fill="#455962"/><g transform="rotate(${angle})" stroke="#92a5ab" stroke-width="1.4" opacity=".65"><path d="M-${r*.4} 0H${r*.4}M0 -${r*.4}V${r*.4}"/><path d="M-${r*.28} -${r*.28}L${r*.28} ${r*.28}"/></g><circle r="3" fill="#b9c9c9"/></g>`;
-  const shield=(x,y,scale=1)=>`<g class="vehicle-windscreen" transform="translate(${x} ${y}) scale(${scale})"><path d="M-18 32C-33 18-26-13-8-33Q0-43 10-33C30-13 37 20 24 37Q10 57-7 46Z" fill="url(#rv-glass)" stroke="#d4e4e2" stroke-opacity=".75" stroke-width="1.1"/><path d="M-20 12Q-20-13-6-28" fill="none" stroke="#efffff" stroke-opacity=".62" stroke-width="2" stroke-linecap="round"/><path d="M-21 3L-26 26L-12 30L-12 6Z" fill="#344d5c" fill-opacity=".9"/><path d="M${f((62-x)/scale)} 12L-15 12" stroke="#263d49" stroke-width="3.5"/><path d="M${f((62-x)/scale)} 10L-15 10" stroke="#d0dfdd" stroke-width="1.3"/></g>`;
-  const chair=(x,y,scale=1)=>{
-    const pedestal=f((411-y)/scale);
-    return `<g class="vehicle-seat" transform="translate(${x} ${y}) scale(${scale})"><path d="M-3 33L-12 ${pedestal}M4 33L14 ${pedestal-4}" stroke="#344d59" stroke-width="4"/><path d="M-3 32L-12 ${pedestal-2}" stroke="#a4b7bd" stroke-width="1.3"/><path d="M-16 23L-8 8L4-25Q7-29 14-28L31-23L15 18Q10 32-9 29Z" fill="url(#rv-glass)" stroke="#b4c8cd" stroke-width="1"/><path d="M-19 18Q-3 28 16 17L20 24Q-5 39-22 27Z" fill="url(#rv-silver)" stroke="#c3d2d1" stroke-width="1"/></g>`;
-  };
-  const back=`<g class="vehicle-back" aria-hidden="true">
-    <ellipse cx="65" cy="480" rx="156" ry="7" fill="#01090e" opacity=".42"/>
-    ${wheelMarkup(-41,463,18)}${wheelMarkup(177,461,19)}
-    <path d="M-84 400L-55 380L166 378L219 401L213 458L-65 476Z" fill="#142732" stroke="#435e6b"/>
-    <path d="M-78 388L-51 375L159 372L216 393L191 414L-58 408Z" fill="url(#rv-deck)" stroke="#a7b9bc" stroke-width="1.4"/>
-    <path d="M44 387L172 384L195 399L168 441L52 442Z" fill="#162b37" stroke="#687f89" stroke-width="1.5"/>
-    <path d="M-64 257Q-8 248 63 255L63 352L-66 366Z" fill="#101f28" stroke="#81969c" stroke-width="1.2"/>
-    <path d="M-65 256Q-6 248 62 254" fill="none" stroke="url(#rv-rib)" stroke-width="3"/>
-    ${chair(127,313,.88)}${shield(89,241,1.15)}
-    ${chair(161,335,1)}${shield(129,255,1.3)}
-    <path d="M165 408Q185 368 216 378L219 423L196 439Z" fill="url(#rv-silver)" stroke="#a9b9bb" stroke-width="1.1"/>
-    <path d="M170 403Q193 381 216 378M180 413L215 393" fill="none" stroke="#a6b8bd" stroke-width="1.5"/>
-  </g>`;
-  // Each grille tier opens with the same front entry. The gaps between ribs
-  // remain transparent, so the standing robot is visible inside the cage.
-  const grille=(upper)=>{
-    const left=upper?-65:-86, right=upper?61:65, center=-19;
-    const start=upper?258:367, step=upper?6.35:6.15, count=upper?16:18;
-    const thickness=upper?2.45:2.9;
-    const panel=(side)=>{
-      // Both stacked tiers share the same physical left/right hinge axes.
-      const hinge=side<0?-86:65;
-      let ribs='';
-      for(let i=0;i<count;i++){
-        const y=f(start+i*step), d=side<0
-          ?`M${left} ${y-5}Q${left+9} ${y-3} ${center-8} ${y+3}L${center} ${y+4}`
-          :`M${center} ${y+4}Q${center+20} ${y+7} ${right-7} ${y-1}Q${right} ${y-2} ${right} ${y-5}`;
-        ribs+=`<path d="${d}" fill="none" stroke="#1c333f" stroke-width="${thickness+1.3}" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="url(#rv-rib)" stroke-width="${thickness}" stroke-linecap="round"/>`;
+  <linearGradient id="rv-silver" x1="0" y1="0" x2=".2" y2="1"><stop stop-color="#d8e1df"/><stop offset=".25" stop-color="#94a5aa"/><stop offset=".64" stop-color="#6b818c"/><stop offset="1" stop-color="#3c5665"/></linearGradient>
+  <linearGradient id="rv-deck" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c9d5d3"/><stop offset=".45" stop-color="#83989f"/><stop offset="1" stop-color="#465f6c"/></linearGradient>
+  <linearGradient id="rv-rib" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f0f5e9"/><stop offset=".35" stop-color="#c5d4d3"/><stop offset=".75" stop-color="#80979f"/><stop offset="1" stop-color="#c5d5d6"/></linearGradient>
+  <linearGradient id="rv-glass" x1="0" y1="0" x2="1" y2=".4"><stop stop-color="#e7ffff" stop-opacity=".36"/><stop offset=".22" stop-color="#c9edf4" stop-opacity=".07"/><stop offset=".7" stop-color="#efffff" stop-opacity=".025"/><stop offset="1" stop-color="#d7f6fa" stop-opacity=".24"/></linearGradient>
+  <radialGradient id="rv-tire"><stop stop-color="#65777e"/><stop offset=".43" stop-color="#293e48"/><stop offset=".67" stop-color="#13252e"/><stop offset="1" stop-color="#061219"/></radialGradient>`;
+  // Clip every surface at the driver's depth so an orbit never puts the whole car
+  // on one side of him. Intersections are interpolated in the car's local space.
+  const clip=(points,side)=>{
+    if(side<0&&points.every(p=>relativeDepth(p)===0))return [];
+    const out=[];
+    for(let i=0;i<points.length;i++) {
+      const a=points[i],b=points[(i+1)%points.length],da=relativeDepth(a)*side,db=relativeDepth(b)*side;
+      if(da>=0) out.push(a);
+      if((da<0&&db>0)||(da>0&&db<0)) {
+        const k=da/(da-db);out.push(a.map((v,j)=>v+(b[j]-v)*k));
       }
-      const end=f(start+(count-1)*step);
-      const supports=side<0
-        ?`<path d="M${left+7} ${start-5}L${left+3} ${end-4}" stroke="#839aa3" stroke-width="2"/><path d="M${center-1} ${start+4}L${center-14} ${end+3}" stroke="#bccdcd" stroke-width="3"/>`
-        :`<path d="M${right-10} ${start-2}V${end-2}" stroke="#839ba4" stroke-width="1.1"/>`;
-      return `<g class="vehicle-gate-leaf" data-side="${side}" transform="translate(${hinge} 0) skewY(${f(side*opened*16)}) scale(${leaf} 1) translate(${-hinge} 0)">${ribs}${supports}</g>`;
-    };
-    return `<g class="vehicle-grille vehicle-grille-${upper?'upper':'lower'}">${panel(-1)}${panel(1)}</g>`;
+    }
+    return out;
   };
-  const front=`<g class="vehicle-front" aria-hidden="true" data-gate="${f(opened)}">
-    <path d="M61 393Q91 384 104 401L111 425L146 417Q181 407 215 409L219 446Q213 458 200 462L60 478Z" fill="url(#rv-silver)" stroke="#a6b8bd" stroke-width="1.4"/>
-    <path d="M67 398Q90 391 99 405L107 433L149 423L215 417" fill="none" stroke="#c5d1cf" stroke-width="2.3"/>
-    <path d="M110 432L211 420L194 449L65 470" fill="none" stroke="#405d6d" stroke-width="1.4"/>
-    <path d="M61 475L201 459Q215 455 218 447" fill="none" stroke="#d5ded6" stroke-width="1.2"/>
-    <path d="M-87 474L-75 469L-15 477L64 470L65 477L-15 482L-88 479Z" fill="url(#rv-silver)" stroke="#718a96" stroke-width="1"/>
-    ${grille(false)}${grille(true)}
-    <path d="M-65 254L-65 354M63 255L63 354" stroke="#b2c4c5" stroke-width="2"/>
-    <path d="M66 365L66 475" stroke="#d5dfd8" stroke-width="3"/>
-  </g>`;
-  return {back,front,defs};
+  const push=(points,markup,side)=>surfaces.push({depth:points.reduce((a,p)=>a+depth(p),0)/points.length,side,markup});
+  const polygon=(points,fill,stroke='#8ca3ad',width=.8,attrs='')=>{
+    for(const side of [-1,1]) {
+      const pp=clip(points,side);if(pp.length<3)continue;
+      const projected=pp.map(project),area=Math.abs(projected.reduce((a,p,i)=>{const q=projected[(i+1)%projected.length];return a+p[0]*q[1]-q[0]*p[1];},0));
+      if(area<.03)continue;
+      push(pp,`<path d="M${pp.map(coords).join(' L')}Z" fill="${fill}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round" ${attrs}/>`,side);
+    }
+  };
+  const segment=(a,b,color='url(#rv-rib)',width=2,attrs='')=>{
+    const da=relativeDepth(a),db=relativeDepth(b);
+    if(da*db<0) {const k=da/(da-db),mid=a.map((v,j)=>v+(b[j]-v)*k);segment(a,mid,color,width,attrs);segment(mid,b,color,width,attrs);return;}
+    push([a,b],`<path d="M${coords(a)} L${coords(b)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" ${attrs}/>`,da+db>=0?1:-1);
+  };
+  const lineStrip=(points,color,width,attrs='')=>{
+    // A rib remains one path on each side of the driver, rather than adding a
+    // separate DOM element for every short section of its projected curve.
+    let run=[],runSide=0;
+    const flush=()=>{if(run.length>1)push(run,`<path d="M${run.map(coords).join(' L')}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" ${attrs}/>`,runSide);run=[];};
+    const append=(a,b)=>{
+      const side=relativeDepth(a)+relativeDepth(b)>=0?1:-1;
+      if(run.length&&side!==runSide)flush();
+      if(!run.length){run=[a];runSide=side;}run.push(b);
+    };
+    for(let i=1;i<points.length;i++) {
+      const a=points[i-1],b=points[i],da=relativeDepth(a),db=relativeDepth(b);
+      if(da*db<0){const k=da/(da-db),mid=a.map((v,j)=>v+(b[j]-v)*k);append(a,mid);append(mid,b);}else append(a,b);
+    }
+    flush();
+  };
+  const box=(x1,x2,y1,y2,z1,z2,fill='url(#rv-silver)',attrs='')=>{
+    const a=[x1,y1,z1],b=[x2,y1,z1],c=[x2,y1,z2],d=[x1,y1,z2],e=[x1,y2,z1],g=[x2,y2,z1],j=[x2,y2,z2],k=[x1,y2,z2];
+    for(const face of [[e,g,j,k],[a,e,g,b],[b,g,j,c],[c,j,k,d],[d,k,e,a]])polygon(face,fill,'#617d89',.8,attrs);
+    polygon([a,b,c,d],'url(#rv-deck)','#c1cfcc',1,attrs);
+  };
+  const circlePoints=(center,ax,ay,r,n=24)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return center.map((v,j)=>v+r*(Math.cos(a)*ax[j]+Math.sin(a)*ay[j]));});
+  // Four volumetric tires: axle direction follows the steering rack on the front pair.
+  for(const z of [-210,37])for(const side of [-1,1]) {
+    const turn=z>0?steer:0,cs=Math.cos(turn),ss=Math.sin(turn),center=[side*91,457,z],ax=[cs,0,-ss],radial=[ss,0,cs],vertical=[0,1,0];
+    const outer=center.map((v,j)=>v+ax[j]*side*8),inner=center.map((v,j)=>v-ax[j]*side*7);
+    const op=circlePoints(outer,radial,vertical,23),ip=circlePoints(inner,radial,vertical,23);
+    for(let j=0;j<24;j++)polygon([ip[j],op[j],op[(j+1)%24],ip[(j+1)%24]],'#15262f','#263c46',.4,'class="vehicle-wheel-tread"');
+    polygon(ip,'#152832','#0a1720',1,'class="vehicle-wheel"');
+    polygon(op,'url(#rv-tire)','#061017',1.5,`class="vehicle-wheel" data-axle="${z>0?'front':'rear'}" data-steering="${f(turn)}"`);
+    polygon(circlePoints(outer,radial,vertical,12),'#536b77','#839ba2',.8,'class="vehicle-wheel-hub"');
+    for(let j=0;j<5;j++) {
+      const a=spin+j*2*Math.PI/5,end=outer.map((v,k)=>v+10*(Math.cos(a)*radial[k]+Math.sin(a)*vertical[k]));
+      segment(outer,end,'#c0d1d0',1.1,`class="vehicle-wheel-spoke" data-wheel="${f(spin)}"`);
+    }
+    polygon(circlePoints(outer,radial,vertical,3,12),'#c6d5d0','#5b737f',.5);
+  }
+  // Rear passenger deck is raised; the front driver's footwell is at Robby's soles.
+  box(-87,87,430,459,-252,-82,'url(#rv-silver)','class="vehicle-chassis"');
+  box(-87,87,448,477,-82,-53,'url(#rv-silver)','class="vehicle-chassis vehicle-step"');
+  const floor=[[-88,476,-65],[88,476,-65],...Array.from({length:19},(_,i)=>{const a=-Math.PI/2+i*Math.PI/18;return [90*Math.sin(a),476,90*Math.cos(a)];}).reverse()];
+  polygon(floor,'url(#rv-deck)','#c6d3d0',1.4,'class="vehicle-footwell"');
+  lineStrip(floor.concat([floor[0]]),'#526f7c',3,'class="vehicle-footwell-rim"');
+  // Low sculpted side panels keep the long body legible in profile and from the rear.
+  for(const side of [-1,1]) {
+    const x=side*89;
+    polygon([[x,431,-248],[x,404,-238],[x,403,-213],[x,419,-177],[x,424,-97],[x,451,-65],[x,465,-65],[x,456,-248]],'url(#rv-silver)','#8ba2aa',1.2,'class="vehicle-side"');
+    lineStrip([[x,432,-247],[x,411,-234],[x,411,-215],[x,427,-180],[x,432,-98],[x,455,-66]],'#d1ded9',2,'class="vehicle-side-trim"');
+    segment([x,450,-246],[x,456,-68],'#4d6c7c',1.2);
+    box(side<0?-102:80,side<0?-80:102,430,441,12,61,'url(#rv-silver)','class="vehicle-front-fender"');
+  }
+  box(-87,87,416,451,-255,-249,'url(#rv-silver)','class="vehicle-rear-panel"');
+  segment([-83,418,-255],[83,418,-255],'#d8e4dd',2.2);
+  for(const x of [-68,68])polygon([[x-7,427,-255.5],[x+7,427,-255.5],[x+7,435,-255.5],[x-7,435,-255.5]],'#64432d','#b89b6c',.8,'class="vehicle-rear-reflector"');
+  // Paired seats have solid cushions, transparent backs and slim supports.
+  for(const x of [-44,44]) {
+    box(x-23,x+23,399,407,-208,-157,'url(#rv-silver)','class="vehicle-seat"');
+    for(const dx of [-16,16])segment([x+dx,407,-184],[x+dx,430,-195],'#aac0c4',2,'class="vehicle-seat-support"');
+    polygon([[x-25,399,-208],[x-25,355,-224],[x-19,350,-226],[x+19,350,-226],[x+25,355,-224],[x+25,399,-208]],'url(#rv-glass)','#bfd6d9',1.1,'class="vehicle-seat-back"');
+    segment([x-20,392,-211],[x-20,359,-223],'#d3e6e6',1,'opacity=".6"');
+    // Each windshield stands ahead of its passenger, sweeping back at the crown.
+    const shield=[[x-29,409,-126],[x-34,388,-127],[x-32,357,-132],[x-23,334,-140],[x-10,322,-145],[x+6,322,-145],[x+23,334,-140],[x+32,357,-132],[x+34,388,-127],[x+29,409,-126]];
+    polygon(shield,'url(#rv-glass)','#cce2e2',1.2,'class="vehicle-windscreen"');
+    lineStrip([[x-26,385,-128],[x-24,361,-133],[x-17,343,-139],[x-8,334,-143]],'#e7f6f2',1.8,'opacity=".62" class="vehicle-windscreen-highlight"');
+    segment([x-26,410,-126],[x-26,430,-125],'#9eb7c1',2.5);
+    segment([x+26,410,-126],[x+26,430,-125],'#9eb7c1',2.5);
+    segment([x-28,407,-126],[x+28,407,-126],'#526d7d',2.3);
+  }
+  // Two tiers of open silver ribs. Rear halves stay fixed; front quarter leaves
+  // swing in local 3D about the same side hinge axes, leaving a clear +z entrance.
+  const swingPoint=(p,side)=>{
+    const a=side*opened*1.75,dx=p[0]-side*92,cs=Math.cos(a),ss=Math.sin(a);
+    return [side*92+dx*cs+p[2]*ss,p[1],-dx*ss+p[2]*cs];
+  };
+  for(const upper of [false,true]) {
+    const r=upper?70:90,start=upper?260:367,end=upper?353:470,count=upper?16:18;
+    for(let j=0;j<count;j++) {
+      const y=start+(end-start)*j/(count-1),attrs=`class="vehicle-grille vehicle-grille-${upper?'upper':'lower'}"`;
+      const rear=Array.from({length:19},(_,i)=>{const a=Math.PI/2+i*Math.PI/18;return [r*Math.sin(a),y,r*Math.cos(a)];});
+      lineStrip(rear,'#3b5663',upper?3:3.5,attrs);
+      lineStrip(rear,'url(#rv-rib)',upper?1.9:2.3,attrs);
+      for(const side of [-1,1]) {
+        const leaf=Array.from({length:10},(_,i)=>{const a=.014+(Math.PI/2-.014)*i/9;return swingPoint([side*r*Math.sin(a),y,r*Math.cos(a)],side);});
+        const leafAttrs=`class="vehicle-grille vehicle-grille-${upper?'upper':'lower'} vehicle-gate-leaf" data-side="${side}" data-gate="${f(opened)}"`;
+        lineStrip(leaf,'#425d69',upper?3.1:3.6,leafAttrs);
+        lineStrip(leaf,'url(#rv-rib)',upper?2:2.5,leafAttrs);
+      }
+    }
+    for(const side of [-1,1]) {
+      const support=[swingPoint([side*r*.06,start,r*.998],side),swingPoint([side*r*.06,end,r*.998],side)];
+      segment(...support,'#c7d7d5',upper?3:3.4,`class="vehicle-gate-support" data-side="${side}"`);
+      segment([side*r,start,0],[side*92,start,0],'#b5c9cb',2.4);
+      segment([side*r,end,0],[side*92,end,0],'#b5c9cb',2.4);
+    }
+  }
+  for(const side of [-1,1]) {
+    segment([side*92,258,0],[side*92,474,0],'#b2c7cb',3,'class="vehicle-gate-hinge"');
+    segment(swingPoint([side*4.2,353,69.85],side),swingPoint([side*5.4,367,89.82],side),'#b7cbd0',2.8,'class="vehicle-gate-link"');
+  }
+  surfaces.sort((a,b)=>a.depth-b.depth);
+  const shadowOutline=[[-110,482,-267],[110,482,-267],[115,482,35],[83,482,107],[-83,482,107],[-115,482,35]];
+  const shadow=`<path class="vehicle-shadow" d="M${shadowOutline.map(coords).join(' L')}Z" fill="#06131a" opacity=".19"/>`;
+  const layer=side=>surfaces.filter(s=>s.side===side).map(s=>`<path data-surface-depth="${f(s.depth)}" ${s.markup.slice(6)}`).join('');
+  return {defs,back:`<g class="vehicle-back" aria-hidden="true" data-heading="${f(h)}">${shadow}${layer(-1)}</g>`,front:`<g class="vehicle-front" aria-hidden="true" data-gate="${f(opened)}" data-heading="${f(h)}">${layer(1)}</g>`};
 }
 
 return renderVehicle;})();
+const {routeSample,routeLength,routeStartDistance,routeGuidePath,projectLocal,scenePosition,VEHICLE_SCALE,GROUND_PITCH}=(()=>{
+/** Ground-plane route in world units. Distance, not angle, is the clock. */
+const VEHICLE_SCALE=.7;
+const GROUND_PITCH=.5;
+const WIDTH=390,DEPTH=280,CORNER=260,STEPS=1024,HALF_PI=Math.PI/2;
+const smooth=t=>t*t*(3-2*t);
+const curve=[{x:0,z:0}];
+for(let i=1;i<=STEPS;i++){
+  const heading=HALF_PI*smooth((i-.5)/STEPS),last=curve[i-1],ds=CORNER/STEPS;
+  curve.push({x:last.x+Math.sin(heading)*ds,z:last.z+Math.cos(heading)*ds});
+}
+const inset=(curve[STEPS].x+curve[STEPS].z)/2;
+const horizontal=2*(WIDTH-inset),vertical=2*(DEPTH-inset);
+const segments=[];
+let distance=0,x=-WIDTH,z=-DEPTH+inset;
+for(let side=0;side<4;side++){
+  const heading=side*HALF_PI,length=side%2?horizontal:vertical;
+  segments.push({start:distance,length,x,z,heading,corner:false});
+  x+=Math.sin(heading)*length;z+=Math.cos(heading)*length;distance+=length;
+  segments.push({start:distance,length:CORNER,x,z,heading,corner:true});
+  x+=inset*(Math.cos(heading)+Math.sin(heading));z+=inset*(Math.cos(heading)-Math.sin(heading));distance+=CORNER;
+}
+const routeLength=distance;
+// Start at a three-quarter view on the lower-left bend, facing into the field.
+const routeStartDistance=vertical+CORNER*.5;
+
+function routeSample(distance=0){
+  const wrapped=((Number(distance)||0)%routeLength+routeLength)%routeLength;
+  const segment=segments.find(s=>wrapped<s.start+s.length)||segments.at(-1);
+  const at=wrapped-segment.start;
+  if(!segment.corner)return {x:segment.x+Math.sin(segment.heading)*at,z:segment.z+Math.cos(segment.heading)*at,
+    heading:segment.heading,dx:Math.sin(segment.heading),dz:Math.cos(segment.heading),curvature:0,distance:wrapped};
+  const u=at/CORNER,index=Math.min(STEPS-1,Math.floor(u*STEPS)),fraction=u*STEPS-index;
+  const a=curve[index],b=curve[index+1],cx=a.x+(b.x-a.x)*fraction,cz=a.z+(b.z-a.z)*fraction;
+  const c=Math.cos(segment.heading),s=Math.sin(segment.heading),heading=segment.heading+HALF_PI*smooth(u);
+  return {x:segment.x+cx*c+cz*s,z:segment.z-cx*s+cz*c,heading,dx:Math.sin(heading),dz:Math.cos(heading),
+    curvature:HALF_PI*6*u*(1-u)/CORNER,distance:wrapped};
+}
+
+function projectLocal(x,z,heading,pitch=GROUND_PITCH){
+  const c=Math.cos(heading),s=Math.sin(heading),depth=-x*s+z*c;
+  return {x:x*c+z*s,y:depth*pitch,depth};
+}
+
+function scenePosition(sample){
+  return {x:sample.x,y:480+sample.z*GROUND_PITCH-480*VEHICLE_SCALE,scale:VEHICLE_SCALE};
+}
+
+function routeGuidePath(){
+  const count=320,points=[];
+  for(let i=0;i<count;i++){
+    const p=routeSample(routeLength*i/count);points.push((i?'L':'M')+p.x.toFixed(2)+' '+(480+p.z*GROUND_PITCH).toFixed(2));
+  }
+  return points.join(' ')+' Z';
+}
+
+return {routeSample,routeLength,routeStartDistance,routeGuidePath,projectLocal,scenePosition,VEHICLE_SCALE,GROUND_PITCH};})();
 const RobbyRobot=(()=>{
+
 
 
 
 const ease=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
 const mix=(a,b,t)=>a+(b-a)*t;
 const yawDelta=(a,b)=>((b-a+540)%360)-180;
-const vehiclePosition=theta=>({x:-42+210*Math.sin(theta),y:40+50*(1-Math.cos(theta)),scale:.81});
-const OUTSIDE={x:-35,depth:88,yaw:0};
+const OUTSIDE={x:0,depth:170,yaw:0};
+const WHEEL_RADIUS=25*VEHICLE_SCALE,CRUISE_SPEED=150,ACCELERATION=180,GROUND_PATH=routeGuidePath();
 
 class RobbyRobot extends HTMLElement {
   constructor(){
@@ -773,7 +917,7 @@ class RobbyRobot extends HTMLElement {
   connectedCallback(){if(this._disposed){this.controller=new PerformanceController();this.controller.addEventListener('change',this._change);if(this.clipUrl)this.controller.setClip(this.clipUrl,this.clipCaption);this._disposed=false}this.setAttribute('tabindex','0');this.setAttribute('aria-label','Robby viewer. Drag or use left and right arrows to turn. Escape stops the performance.');document.addEventListener('visibilitychange',this._visibility);this.last=0;cancelAnimationFrame(this.raf);this.raf=requestAnimationFrame(this._tick)}
   disconnectedCallback(){cancelAnimationFrame(this.raf);document.removeEventListener('visibilitychange',this._visibility);this.controller.removeEventListener('change',this._change);this.controller.destroy();this._clearVehicle();this._disposed=true}
   destroy(){this.remove();if(!this._disposed)this.disconnectedCallback()}
-  _clearVehicle(){this.vehicleTime=null;this.vehicleAction=null;this._vehiclePose=null;this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;this._parkWalkTime=0;this._wheelDistance=0}
+  _clearVehicle(){this.vehicleTime=null;this.vehicleAction=null;this._vehiclePose=null;this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;this._parkWalkTime=0;this._wheelDistance=0;this._driveSpeed=0;this._vehicleRenderKey=null}
   _phase(){
     if(!this.vehicleAction)return null;
     if(this.vehicleAction==='parked')return this._outsideWalk&&!this.controller.state.reducedMotion?'walking outside':'parked';
@@ -788,9 +932,13 @@ class RobbyRobot extends HTMLElement {
   _emit(){this._lastVehiclePhase=this._phase();this.dispatchEvent(new CustomEvent('robotstatechange',{detail:this.debugState(),bubbles:true}))}
   debugState(){
     const p=this._vehiclePose;
+    const offset=p?projectLocal(p.x,p.depth,p.heading):null;
     return {...this.controller.state,vehicleAction:this.vehicleAction,vehiclePhase:this._phase(),vehicleElapsed:this.vehicleTime,
-      vehiclePosition:p?{...p.position}:null,vehicleGate:p?.gate??null,vehicleWheel:p?.wheel??null,vehiclePathAngle:p?.theta??null,
-      robotPosition:p?{x:p.x,depth:p.depth,yaw:p.yaw}:null,vehicleOutside:!!this._vehicleOutside,
+      vehiclePosition:p?{...p.position}:null,vehicleWorldPosition:p?{...p.world}:null,vehicleGate:p?.gate??null,vehicleWheel:p?.wheel??null,
+      vehiclePathAngle:p?.heading??null,vehicleHeading:p?.heading??null,vehicleSteering:p?.steering??null,
+      vehicleDistance:p?.routeDistance??null,vehicleSpeed:p?(this._driveSpeed||0)*this.speed:0,
+      robotPosition:p?{x:p.x,depth:p.depth,yaw:p.yaw,heading:p.heading+p.yaw*Math.PI/180}:null,
+      robotGroundPosition:p?{x:p.world.x+offset.x*VEHICLE_SCALE,z:p.world.z+offset.depth*VEHICLE_SCALE}:null,vehicleOutside:!!this._vehicleOutside,
       angle:this.angle,speed:this.speed,zoom:this.zoom};
   }
   perform(mode){
@@ -802,17 +950,19 @@ class RobbyRobot extends HTMLElement {
   drive(){
     if(this.vehicleAction==='drive')return;
     const previous=this._vehiclePose;
-    this._driveFrom=previous?{x:previous.x,depth:previous.depth,yaw:previous.yaw,gate:previous.gate,inFront:previous.inFront}:{x:-19,depth:65,yaw:170,gate:0,inFront:true};
-    this._driveTheta=previous?.theta||0;this._wheelDistance=(previous?.wheel||0)*12;
-    this.vehicleTime=0;this.vehicleAction='drive';this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;
-    this._vehiclePose=this._drivePose(0);this.controller.setMode('drive');this._reduceVehicle();this._emit();
+    this._driveFrom=previous?{x:previous.x,depth:previous.depth,yaw:previous.yaw,gate:previous.gate,inFront:previous.inFront}:{x:0,depth:170,yaw:180,gate:0,inFront:true};
+    this._routeDistance=previous?.routeDistance??routeStartDistance;this._wheelDistance=(previous?.wheel||0)*WHEEL_RADIUS;this._driveSpeed=0;
+    const aboard=previous&&Math.hypot(previous.x,previous.depth)<.001&&previous.gate<.001&&Math.abs(yawDelta(previous.yaw,0))<.01;
+    this.vehicleTime=aboard||(!previous&&this.controller.state.reducedMotion)?6.7:0;this.vehicleAction='drive';this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;
+    this._vehiclePose=this._drivePose(this.vehicleTime);this.controller.setMode('drive');this._reduceVehicle();this._emit();
   }
   _drivePose(v){
-    const from=this._driveFrom,board=ease((v-1.4)/3),theta=this._driveTheta+Math.max(0,v-6.7)*.55;
-    return {position:vehiclePosition(theta),theta,wheel:(this._wheelDistance||0)/12,
+    const from=this._driveFrom,board=ease((v-1.4)/3),road=routeSample(this._routeDistance);
+    return {position:scenePosition(road),world:{x:road.x,z:road.z},routeDistance:this._routeDistance,heading:road.heading,
+      steering:Math.atan(110*road.curvature),wheel:(this._wheelDistance||0)/WHEEL_RADIUS,
       gate:v<1.4?mix(from.gate,1,ease(v/1.4)):v<5.3?1:1-ease((v-5.3)/1.4),
       x:from.x*(1-board),depth:from.depth*(1-board),
-      yaw:v<1.4?from.yaw+yawDelta(from.yaw,170)*ease(v/1.4):170-182*ease((v-4.4)/.9),
+      yaw:v<1.4?from.yaw+yawDelta(from.yaw,180)*ease(v/1.4):180*(1-ease((v-4.4)/.9)),
       inFront:v<1.4?from.inFront:v<4.4,walkWeight:v>=1.4&&v<4.4?.8:0};
   }
   _startExit(){
@@ -825,7 +975,7 @@ class RobbyRobot extends HTMLElement {
     this._exit={elapsed:0,from:{x:p.x,depth:p.depth,yaw:p.yaw,gate:p.gate},
       openFor:1.4*(1-p.gate),turnFor:Math.abs(yawDelta(p.yaw,OUTSIDE.yaw))/180*.9,
       walkFor:Math.max(.8,2.6*Math.hypot(OUTSIDE.x-p.x,OUTSIDE.depth-p.depth)/Math.hypot(OUTSIDE.x,OUTSIDE.depth))};
-    this.vehicleAction='exit';this._outsideWalk=false;
+    this.vehicleAction='exit';this._outsideWalk=false;this._driveSpeed=0;
     // Capture the displayed vehicle/wheel pose before changing performance.
     this.controller.setMode('walk');this._reduceVehicle();this._emit();
   }
@@ -837,14 +987,11 @@ class RobbyRobot extends HTMLElement {
   _reduceVehicle(){
     if(!this.controller.state.reducedMotion||!this._vehiclePose)return;
     if(this.vehicleAction==='exit')this._finishExit();
-    else if(this.vehicleAction==='drive'){
-      this.vehicleTime=6.7;this._driveTheta=this._vehiclePose.theta;
-      Object.assign(this._vehiclePose,{x:0,depth:0,yaw:-12,gate:0,inFront:false,walkWeight:0});
-    }
+    else if(this.vehicleAction==='drive')this._driveSpeed=0;
   }
   stop(){
     // Freeze an interrupted gate/exit in place; do not remove the parked car.
-    if(this.vehicleAction){this.vehicleAction='parked';this._exit=null;this._outsideWalk=false;this._vehiclePose.walkWeight=0}
+    if(this.vehicleAction){this.vehicleAction='parked';this._exit=null;this._outsideWalk=false;this._vehiclePose.walkWeight=0;this._driveSpeed=0}
     this.controller.stop();this.renderer.offset=0;this._emit();
   }
   show(){this.hidden=false;this._emit()} hide(){this.stop();this.hidden=true;this._emit()}
@@ -858,9 +1005,12 @@ class RobbyRobot extends HTMLElement {
     const p=this._vehiclePose;
     if(s.reducedMotion){this._reduceVehicle();return}
     if(this.vehicleAction==='drive'){
-      this.vehicleTime+=step;const next=this._drivePose(this.vehicleTime);
-      this._wheelDistance+=Math.hypot(next.position.x-p.position.x,next.position.y-p.position.y);
-      next.wheel=this._wheelDistance/12;this._vehiclePose=next;
+      const before=this.vehicleTime;this.vehicleTime+=step;
+      const moving=Math.max(0,this.vehicleTime-6.7)-Math.max(0,before-6.7);
+      const accelerating=Math.min(moving,(CRUISE_SPEED-this._driveSpeed)/ACCELERATION);
+      const traveled=this._driveSpeed*accelerating+.5*ACCELERATION*accelerating*accelerating+CRUISE_SPEED*(moving-accelerating);
+      this._driveSpeed=Math.min(CRUISE_SPEED,this._driveSpeed+ACCELERATION*moving);
+      this._routeDistance+=traveled;this._wheelDistance+=traveled;this._vehiclePose=this._drivePose(this.vehicleTime);
     }else if(this.vehicleAction==='exit'){
       const e=this._exit;e.elapsed+=step;
       p.gate=e.openFor?mix(e.from.gate,1,ease(e.elapsed/e.openFor)):1;p.walkWeight=0;
@@ -880,23 +1030,29 @@ class RobbyRobot extends HTMLElement {
   }
   _renderVehicle(s){
     const p=this._vehiclePose;
-    this.renderer.zoom=1;this.renderer.offset=0;this.renderer.yaw=p.yaw*Math.PI/180;
-    this.renderer.render({...s,phase:this.vehicleAction==='drive'?this.vehicleTime*5:s.phase,walkWeight:s.reducedMotion?0:p.walkWeight,
+    const walking=s.reducedMotion?0:p.walkWeight,phase=this.vehicleAction==='drive'?this.vehicleTime*5:s.phase;
+    const key=[p.position.x,p.position.y,p.position.scale,p.heading,p.steering,p.wheel,p.gate,p.x,p.depth,p.yaw,walking,walking?phase:0].join('|');
+    if(key===this._vehicleRenderKey)return;
+    this.renderer.zoom=1;this.renderer.offset=0;this.renderer.groundPitch=GROUND_PITCH;this.renderer.yaw=p.heading+p.yaw*Math.PI/180;
+    this.renderer.render({...s,phase,walkWeight:walking,
       lightLevel:0,speechLevel:0,registerLevel:0,speaking:false});
-    const vehicle=renderVehicle({gate:p.gate,wheel:p.wheel}),robot=this.svg.innerHTML;
-    this.svg.setAttribute('viewBox','-520 -70 1040 720');
-    const robotMarkup='<g class="boarding-robot" data-depth="'+p.depth.toFixed(2)+'" transform="translate('+p.x+' '+p.depth+')">'+robot+'</g>';
-    // Fixed upright 2.5D artwork follows a ground-plane ellipse without spins.
-    const loop='<g class="vehicle-ground-loop" aria-hidden="true"><ellipse cx="-42" cy="478.8" rx="210" ry="50" fill="#94b6b4" fill-opacity=".035" stroke="#d8e2c9" stroke-opacity=".5" stroke-width="1.6" stroke-dasharray="5 9"/><ellipse cx="-42" cy="478.8" rx="222" ry="56" fill="none" stroke="#d8e2c9" stroke-opacity=".2" stroke-width="1"/></g>';
-    this.svg.innerHTML='<defs>'+(vehicle.defs||'')+'</defs>'+loop+'<g transform="translate('+p.position.x+' '+p.position.y+') scale('+p.position.scale+')">'+vehicle.back+(p.inFront?vehicle.front+robotMarkup:robotMarkup+vehicle.front)+'</g>';
+    const offset=projectLocal(p.x,p.depth,p.heading);
+    const vehicle=renderVehicle({gate:p.gate,wheel:p.wheel,heading:p.heading,steering:p.steering,pitch:GROUND_PITCH,robotDepth:offset.depth}),robot=this.svg.innerHTML;
+    this.svg.setAttribute('viewBox','-620 -90 1240 850');
+    const robotMarkup='<g class="boarding-robot" data-depth="'+p.depth.toFixed(2)+'" data-camera-depth="'+offset.depth.toFixed(2)+'" transform="translate('+offset.x+' '+offset.y+')">'+robot+'</g>';
+    const loop='<g class="vehicle-ground-loop" aria-hidden="true"><path d="'+GROUND_PATH+'" fill="#94b6b4" fill-opacity=".035" stroke="#d8e2c9" stroke-opacity=".5" stroke-width="1.6" stroke-dasharray="5 9"/></g>';
+    this.svg.innerHTML='<defs>'+(vehicle.defs||'')+'</defs>'+loop+'<g transform="translate('+p.position.x+' '+p.position.y+') scale('+p.position.scale+')">'+vehicle.back+robotMarkup+vehicle.front+'</g>';
+    this._vehicleRenderKey=key;
   }
   _tick(now){
-    const dt=this.last?Math.min(.05,(now-this.last)/1000):0;this.last=now;
+    // Advance by real visible elapsed time; slow rendering must not slow the car.
+    // Visibility handling resets last after stopping the scene on a hidden tab.
+    const dt=this.last?Math.max(0,(now-this.last)/1000):0;this.last=now;
     const raw=this.controller.update(dt,this.speed);
     if(!raw.reducedMotion&&(raw.mode!=='idle'||this.vehicleAction==='drive'||this.vehicleAction==='exit'))this.animationTime=(this.animationTime||0)+dt*this.speed;
     const s={...raw,time:this.animationTime||0};this.renderer.zoom=this.zoom;this.renderer.offset=(s.walkWeight||0)*Math.sin((s.time||0)*.42)*40;
     if(this.vehicleAction){this._stepVehicle(dt*this.speed,s);this._renderVehicle(s);if(this._phase()!==this._lastVehiclePhase)this._emit()}
-    else{this.renderer.yaw=this.angle*Math.PI/180;this.svg.setAttribute('viewBox','-300 -24 600 554');this.renderer.render(s)}
+    else{this.renderer.groundPitch=null;this.renderer.yaw=this.angle*Math.PI/180;this.svg.setAttribute('viewBox','-300 -24 600 554');this.renderer.render(s)}
     this.raf=requestAnimationFrame(this._tick);
   }
 }

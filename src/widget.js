@@ -1,11 +1,12 @@
 import {RobbyRenderer} from './robot.js';
 import {PerformanceController} from './performance.js';
 import {renderVehicle} from './vehicle.js';
+import {routeSample,routeStartDistance,routeGuidePath,projectLocal,scenePosition,VEHICLE_SCALE,GROUND_PITCH} from './driving.js';
 const ease=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
 const mix=(a,b,t)=>a+(b-a)*t;
 const yawDelta=(a,b)=>((b-a+540)%360)-180;
-const vehiclePosition=theta=>({x:-42+210*Math.sin(theta),y:40+50*(1-Math.cos(theta)),scale:.81});
-const OUTSIDE={x:-35,depth:88,yaw:0};
+const OUTSIDE={x:0,depth:170,yaw:0};
+const WHEEL_RADIUS=25*VEHICLE_SCALE,CRUISE_SPEED=150,ACCELERATION=180,GROUND_PATH=routeGuidePath();
 
 export class RobbyRobot extends HTMLElement {
   constructor(){
@@ -24,7 +25,7 @@ export class RobbyRobot extends HTMLElement {
   connectedCallback(){if(this._disposed){this.controller=new PerformanceController();this.controller.addEventListener('change',this._change);if(this.clipUrl)this.controller.setClip(this.clipUrl,this.clipCaption);this._disposed=false}this.setAttribute('tabindex','0');this.setAttribute('aria-label','Robby viewer. Drag or use left and right arrows to turn. Escape stops the performance.');document.addEventListener('visibilitychange',this._visibility);this.last=0;cancelAnimationFrame(this.raf);this.raf=requestAnimationFrame(this._tick)}
   disconnectedCallback(){cancelAnimationFrame(this.raf);document.removeEventListener('visibilitychange',this._visibility);this.controller.removeEventListener('change',this._change);this.controller.destroy();this._clearVehicle();this._disposed=true}
   destroy(){this.remove();if(!this._disposed)this.disconnectedCallback()}
-  _clearVehicle(){this.vehicleTime=null;this.vehicleAction=null;this._vehiclePose=null;this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;this._parkWalkTime=0;this._wheelDistance=0}
+  _clearVehicle(){this.vehicleTime=null;this.vehicleAction=null;this._vehiclePose=null;this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;this._parkWalkTime=0;this._wheelDistance=0;this._driveSpeed=0;this._vehicleRenderKey=null}
   _phase(){
     if(!this.vehicleAction)return null;
     if(this.vehicleAction==='parked')return this._outsideWalk&&!this.controller.state.reducedMotion?'walking outside':'parked';
@@ -39,9 +40,13 @@ export class RobbyRobot extends HTMLElement {
   _emit(){this._lastVehiclePhase=this._phase();this.dispatchEvent(new CustomEvent('robotstatechange',{detail:this.debugState(),bubbles:true}))}
   debugState(){
     const p=this._vehiclePose;
+    const offset=p?projectLocal(p.x,p.depth,p.heading):null;
     return {...this.controller.state,vehicleAction:this.vehicleAction,vehiclePhase:this._phase(),vehicleElapsed:this.vehicleTime,
-      vehiclePosition:p?{...p.position}:null,vehicleGate:p?.gate??null,vehicleWheel:p?.wheel??null,vehiclePathAngle:p?.theta??null,
-      robotPosition:p?{x:p.x,depth:p.depth,yaw:p.yaw}:null,vehicleOutside:!!this._vehicleOutside,
+      vehiclePosition:p?{...p.position}:null,vehicleWorldPosition:p?{...p.world}:null,vehicleGate:p?.gate??null,vehicleWheel:p?.wheel??null,
+      vehiclePathAngle:p?.heading??null,vehicleHeading:p?.heading??null,vehicleSteering:p?.steering??null,
+      vehicleDistance:p?.routeDistance??null,vehicleSpeed:p?(this._driveSpeed||0)*this.speed:0,
+      robotPosition:p?{x:p.x,depth:p.depth,yaw:p.yaw,heading:p.heading+p.yaw*Math.PI/180}:null,
+      robotGroundPosition:p?{x:p.world.x+offset.x*VEHICLE_SCALE,z:p.world.z+offset.depth*VEHICLE_SCALE}:null,vehicleOutside:!!this._vehicleOutside,
       angle:this.angle,speed:this.speed,zoom:this.zoom};
   }
   perform(mode){
@@ -53,17 +58,19 @@ export class RobbyRobot extends HTMLElement {
   drive(){
     if(this.vehicleAction==='drive')return;
     const previous=this._vehiclePose;
-    this._driveFrom=previous?{x:previous.x,depth:previous.depth,yaw:previous.yaw,gate:previous.gate,inFront:previous.inFront}:{x:-19,depth:65,yaw:170,gate:0,inFront:true};
-    this._driveTheta=previous?.theta||0;this._wheelDistance=(previous?.wheel||0)*12;
-    this.vehicleTime=0;this.vehicleAction='drive';this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;
-    this._vehiclePose=this._drivePose(0);this.controller.setMode('drive');this._reduceVehicle();this._emit();
+    this._driveFrom=previous?{x:previous.x,depth:previous.depth,yaw:previous.yaw,gate:previous.gate,inFront:previous.inFront}:{x:0,depth:170,yaw:180,gate:0,inFront:true};
+    this._routeDistance=previous?.routeDistance??routeStartDistance;this._wheelDistance=(previous?.wheel||0)*WHEEL_RADIUS;this._driveSpeed=0;
+    const aboard=previous&&Math.hypot(previous.x,previous.depth)<.001&&previous.gate<.001&&Math.abs(yawDelta(previous.yaw,0))<.01;
+    this.vehicleTime=aboard||(!previous&&this.controller.state.reducedMotion)?6.7:0;this.vehicleAction='drive';this._exit=null;this._outsideWalk=false;this._vehicleOutside=false;
+    this._vehiclePose=this._drivePose(this.vehicleTime);this.controller.setMode('drive');this._reduceVehicle();this._emit();
   }
   _drivePose(v){
-    const from=this._driveFrom,board=ease((v-1.4)/3),theta=this._driveTheta+Math.max(0,v-6.7)*.55;
-    return {position:vehiclePosition(theta),theta,wheel:(this._wheelDistance||0)/12,
+    const from=this._driveFrom,board=ease((v-1.4)/3),road=routeSample(this._routeDistance);
+    return {position:scenePosition(road),world:{x:road.x,z:road.z},routeDistance:this._routeDistance,heading:road.heading,
+      steering:Math.atan(110*road.curvature),wheel:(this._wheelDistance||0)/WHEEL_RADIUS,
       gate:v<1.4?mix(from.gate,1,ease(v/1.4)):v<5.3?1:1-ease((v-5.3)/1.4),
       x:from.x*(1-board),depth:from.depth*(1-board),
-      yaw:v<1.4?from.yaw+yawDelta(from.yaw,170)*ease(v/1.4):170-182*ease((v-4.4)/.9),
+      yaw:v<1.4?from.yaw+yawDelta(from.yaw,180)*ease(v/1.4):180*(1-ease((v-4.4)/.9)),
       inFront:v<1.4?from.inFront:v<4.4,walkWeight:v>=1.4&&v<4.4?.8:0};
   }
   _startExit(){
@@ -76,7 +83,7 @@ export class RobbyRobot extends HTMLElement {
     this._exit={elapsed:0,from:{x:p.x,depth:p.depth,yaw:p.yaw,gate:p.gate},
       openFor:1.4*(1-p.gate),turnFor:Math.abs(yawDelta(p.yaw,OUTSIDE.yaw))/180*.9,
       walkFor:Math.max(.8,2.6*Math.hypot(OUTSIDE.x-p.x,OUTSIDE.depth-p.depth)/Math.hypot(OUTSIDE.x,OUTSIDE.depth))};
-    this.vehicleAction='exit';this._outsideWalk=false;
+    this.vehicleAction='exit';this._outsideWalk=false;this._driveSpeed=0;
     // Capture the displayed vehicle/wheel pose before changing performance.
     this.controller.setMode('walk');this._reduceVehicle();this._emit();
   }
@@ -88,14 +95,11 @@ export class RobbyRobot extends HTMLElement {
   _reduceVehicle(){
     if(!this.controller.state.reducedMotion||!this._vehiclePose)return;
     if(this.vehicleAction==='exit')this._finishExit();
-    else if(this.vehicleAction==='drive'){
-      this.vehicleTime=6.7;this._driveTheta=this._vehiclePose.theta;
-      Object.assign(this._vehiclePose,{x:0,depth:0,yaw:-12,gate:0,inFront:false,walkWeight:0});
-    }
+    else if(this.vehicleAction==='drive')this._driveSpeed=0;
   }
   stop(){
     // Freeze an interrupted gate/exit in place; do not remove the parked car.
-    if(this.vehicleAction){this.vehicleAction='parked';this._exit=null;this._outsideWalk=false;this._vehiclePose.walkWeight=0}
+    if(this.vehicleAction){this.vehicleAction='parked';this._exit=null;this._outsideWalk=false;this._vehiclePose.walkWeight=0;this._driveSpeed=0}
     this.controller.stop();this.renderer.offset=0;this._emit();
   }
   show(){this.hidden=false;this._emit()} hide(){this.stop();this.hidden=true;this._emit()}
@@ -109,9 +113,12 @@ export class RobbyRobot extends HTMLElement {
     const p=this._vehiclePose;
     if(s.reducedMotion){this._reduceVehicle();return}
     if(this.vehicleAction==='drive'){
-      this.vehicleTime+=step;const next=this._drivePose(this.vehicleTime);
-      this._wheelDistance+=Math.hypot(next.position.x-p.position.x,next.position.y-p.position.y);
-      next.wheel=this._wheelDistance/12;this._vehiclePose=next;
+      const before=this.vehicleTime;this.vehicleTime+=step;
+      const moving=Math.max(0,this.vehicleTime-6.7)-Math.max(0,before-6.7);
+      const accelerating=Math.min(moving,(CRUISE_SPEED-this._driveSpeed)/ACCELERATION);
+      const traveled=this._driveSpeed*accelerating+.5*ACCELERATION*accelerating*accelerating+CRUISE_SPEED*(moving-accelerating);
+      this._driveSpeed=Math.min(CRUISE_SPEED,this._driveSpeed+ACCELERATION*moving);
+      this._routeDistance+=traveled;this._wheelDistance+=traveled;this._vehiclePose=this._drivePose(this.vehicleTime);
     }else if(this.vehicleAction==='exit'){
       const e=this._exit;e.elapsed+=step;
       p.gate=e.openFor?mix(e.from.gate,1,ease(e.elapsed/e.openFor)):1;p.walkWeight=0;
@@ -131,23 +138,29 @@ export class RobbyRobot extends HTMLElement {
   }
   _renderVehicle(s){
     const p=this._vehiclePose;
-    this.renderer.zoom=1;this.renderer.offset=0;this.renderer.yaw=p.yaw*Math.PI/180;
-    this.renderer.render({...s,phase:this.vehicleAction==='drive'?this.vehicleTime*5:s.phase,walkWeight:s.reducedMotion?0:p.walkWeight,
+    const walking=s.reducedMotion?0:p.walkWeight,phase=this.vehicleAction==='drive'?this.vehicleTime*5:s.phase;
+    const key=[p.position.x,p.position.y,p.position.scale,p.heading,p.steering,p.wheel,p.gate,p.x,p.depth,p.yaw,walking,walking?phase:0].join('|');
+    if(key===this._vehicleRenderKey)return;
+    this.renderer.zoom=1;this.renderer.offset=0;this.renderer.groundPitch=GROUND_PITCH;this.renderer.yaw=p.heading+p.yaw*Math.PI/180;
+    this.renderer.render({...s,phase,walkWeight:walking,
       lightLevel:0,speechLevel:0,registerLevel:0,speaking:false});
-    const vehicle=renderVehicle({gate:p.gate,wheel:p.wheel}),robot=this.svg.innerHTML;
-    this.svg.setAttribute('viewBox','-520 -70 1040 720');
-    const robotMarkup='<g class="boarding-robot" data-depth="'+p.depth.toFixed(2)+'" transform="translate('+p.x+' '+p.depth+')">'+robot+'</g>';
-    // Fixed upright 2.5D artwork follows a ground-plane ellipse without spins.
-    const loop='<g class="vehicle-ground-loop" aria-hidden="true"><ellipse cx="-42" cy="478.8" rx="210" ry="50" fill="#94b6b4" fill-opacity=".035" stroke="#d8e2c9" stroke-opacity=".5" stroke-width="1.6" stroke-dasharray="5 9"/><ellipse cx="-42" cy="478.8" rx="222" ry="56" fill="none" stroke="#d8e2c9" stroke-opacity=".2" stroke-width="1"/></g>';
-    this.svg.innerHTML='<defs>'+(vehicle.defs||'')+'</defs>'+loop+'<g transform="translate('+p.position.x+' '+p.position.y+') scale('+p.position.scale+')">'+vehicle.back+(p.inFront?vehicle.front+robotMarkup:robotMarkup+vehicle.front)+'</g>';
+    const offset=projectLocal(p.x,p.depth,p.heading);
+    const vehicle=renderVehicle({gate:p.gate,wheel:p.wheel,heading:p.heading,steering:p.steering,pitch:GROUND_PITCH,robotDepth:offset.depth}),robot=this.svg.innerHTML;
+    this.svg.setAttribute('viewBox','-620 -90 1240 850');
+    const robotMarkup='<g class="boarding-robot" data-depth="'+p.depth.toFixed(2)+'" data-camera-depth="'+offset.depth.toFixed(2)+'" transform="translate('+offset.x+' '+offset.y+')">'+robot+'</g>';
+    const loop='<g class="vehicle-ground-loop" aria-hidden="true"><path d="'+GROUND_PATH+'" fill="#94b6b4" fill-opacity=".035" stroke="#d8e2c9" stroke-opacity=".5" stroke-width="1.6" stroke-dasharray="5 9"/></g>';
+    this.svg.innerHTML='<defs>'+(vehicle.defs||'')+'</defs>'+loop+'<g transform="translate('+p.position.x+' '+p.position.y+') scale('+p.position.scale+')">'+vehicle.back+robotMarkup+vehicle.front+'</g>';
+    this._vehicleRenderKey=key;
   }
   _tick(now){
-    const dt=this.last?Math.min(.05,(now-this.last)/1000):0;this.last=now;
+    // Advance by real visible elapsed time; slow rendering must not slow the car.
+    // Visibility handling resets last after stopping the scene on a hidden tab.
+    const dt=this.last?Math.max(0,(now-this.last)/1000):0;this.last=now;
     const raw=this.controller.update(dt,this.speed);
     if(!raw.reducedMotion&&(raw.mode!=='idle'||this.vehicleAction==='drive'||this.vehicleAction==='exit'))this.animationTime=(this.animationTime||0)+dt*this.speed;
     const s={...raw,time:this.animationTime||0};this.renderer.zoom=this.zoom;this.renderer.offset=(s.walkWeight||0)*Math.sin((s.time||0)*.42)*40;
     if(this.vehicleAction){this._stepVehicle(dt*this.speed,s);this._renderVehicle(s);if(this._phase()!==this._lastVehiclePhase)this._emit()}
-    else{this.renderer.yaw=this.angle*Math.PI/180;this.svg.setAttribute('viewBox','-300 -24 600 554');this.renderer.render(s)}
+    else{this.renderer.groundPitch=null;this.renderer.yaw=this.angle*Math.PI/180;this.svg.setAttribute('viewBox','-300 -24 600 554');this.renderer.render(s)}
     this.raf=requestAnimationFrame(this._tick);
   }
 }
