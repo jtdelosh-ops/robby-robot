@@ -1,0 +1,6 @@
+{
+  "name": "robby-performance-lab", "version": "1.0.0", "private": true,
+  "type": "module", "description": "An offline Robby the Robot animation and original-voice tech demo",
+  "engines": {"node": ">=22"},
+  "scripts": {"build": "node build.mjs", "start": "node serve.mjs", "test": "node --test"}
+}

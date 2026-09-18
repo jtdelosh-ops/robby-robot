@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>Original voice verification</title><button id="play">Play original clip</button><button id="stop">Stop</button><pre id="result"></pre><script type="module">
+import {PerformanceController} from '../src/performance.js';
+const controller=new PerformanceController();controller.setClip('../assets/voice.mp3','Original film self-introduction');
+document.querySelector('#play').onclick=()=>{observations.length=0;controller.setMuted(false);controller.setMode('talk')};document.querySelector('#stop').onclick=()=>controller.stop();let previous=0,maximum=0;const observations=[];
+function tick(time){const s=controller.update(previous?(time-previous)/1000:0);previous=time;maximum=Math.max(maximum,s.speechLevel);if(observations.at(-1)?.audioStatus!==s.audioStatus)observations.push({audioStatus:s.audioStatus,modeTime:s.modeTime,speaking:s.speaking,lightLevel:s.lightLevel,registerLevel:s.registerLevel});document.querySelector('#result').textContent=JSON.stringify({mode:s.mode,audioStatus:s.audioStatus,currentTime:controller._audio?.currentTime,duration:controller._audio?.duration,paused:controller._audio?.paused,context:controller._context?.state,speaking:s.speaking,lightLevel:s.lightLevel,speechLevel:s.speechLevel,maximumObservedLevel:maximum,observations},null,2);requestAnimationFrame(tick)}requestAnimationFrame(tick);
+</script>
